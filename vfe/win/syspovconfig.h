@@ -50,7 +50,7 @@
 
 // _CONSOLE must be defined when building the console version of POVWIN.
 // failure to do so will lead to link errors.
-// #define _CONSOLE
+#define _CONSOLE
 
 #include <cmath>
 #include <cstdarg>

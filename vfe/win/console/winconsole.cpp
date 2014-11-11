@@ -34,6 +34,8 @@
  *******************************************************************************/
 
 #include "vfe.h"
+#include "povray.h"
+#define PVENGINE_VER              POVRAY_PLATFORM_NAME
 
 #ifndef _CONSOLE
 #error You must define _CONSOLE in vfe\win\syspovconfig.h prior to building the console version, otherwise you will get link errors.
@@ -60,6 +62,8 @@ void PrintStatus (vfeSession *session)
 
   while (session->GetNextCombinedMessage (type, str))
   {
+    fprintf (stderr, "%s\n", str.c_str());
+    /*
     if (type != vfeSession::mGenericStatus)
     {
       if (lastType == vfeSession::mGenericStatus)
@@ -69,7 +73,9 @@ void PrintStatus (vfeSession *session)
     else
       fprintf (stderr, "%s\r", str.c_str());
     lastType = type;
+     */
   }
+  fflush(stderr);
 }
 
 void ErrorExit(vfeSession *session)
@@ -93,7 +99,7 @@ int main (int argc, char **argv)
 
   fprintf(stderr,
           "This is an example of a minimal console build of POV-Ray under Windows.\n\n"
-          "Persistence of Vision Raytracer(tm) " POV_RAY_VERSION COMPILER_VER SSE2_INCLUDED "." PVENGINE_VER ".\n"
+          "Persistence of Vision Raytracer(tm) " POV_RAY_VERSION COMPILER_VER SSE2_INCLUDED ".", PVENGINE_VER ".\n"
           DISTRIBUTION_MESSAGE_1 "\n"
           DISTRIBUTION_MESSAGE_2 "\n"
           DISTRIBUTION_MESSAGE_3 "\n"
