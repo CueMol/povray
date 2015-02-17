@@ -1,5 +1,7 @@
 #!/bin/sh
 
+tab=`echo -e "\t"`
+
 ########################################################################################################################
 #
 # Verify that all the version identifiers in the source tree match.
@@ -41,7 +43,7 @@ fi
 # Update prerelease id (trailing numeric portion) if there is any change to the actual program code.
 # We're setting the prerelease id to the number of minutes since 2000-01-01 00:00.
 
-if git diff --cached --name-only | grep -E "^source/|^vfe|^mac|^unix|^windows|^libraries" >/dev/null
+if git diff --cached --name-only | grep -E "^source/|^vfe/|^mac/|^unix/|^windows/|^libraries/" >/dev/null
 then
   if [ x"$prerelease_povray_h" = x"" ]
   then
@@ -51,7 +53,7 @@ then
     timestamp=`date -u +"%s"`
     revision=`expr \( "$timestamp" - "$y2k" \) / 60`
     echo "changes to the POV-Ray code detected, updating prerelease id to $revision."
-    if git diff --name-only "source/backend/povray.h" | grep "source/backend/povray.h"  >/dev/null
+    if git diff --name-only "source/backend/povray.h" | grep "source/backend/povray.h" >/dev/null
     then
       echo "ERROR: Unstaged changes to source/backend/povray.h detected, can't safely update prerelease id."
       exit 1
@@ -61,13 +63,108 @@ then
       echo "ERROR: Unstaged changes to unix/VERSION detected, can't safely update prerelease id."
       exit 1
     fi
-    sed -i 's/\(#define [ ]*POV_RAY_PRERELEASE [ ]*".*[^0-9]\)[0-9][0-9]*"/\1'"$revision"'"/g' source/backend/povray.h
-    git add source/backend/povray.h
-    sed -i 's/\([^0-9]\)[0-9][0-9]*$/\1'"$revision"'/g' unix/VERSION
-    git add unix/VERSION
+    sed -i \
+      -e 's/\(#define [ ]*POV_RAY_PRERELEASE [ ]*".*[^0-9]\)[0-9][0-9]*"/\1'"$revision"'"/g' \
+      source/backend/povray.h >/dev/null 2>/dev/null
+    sed -i \
+      -e 's/\([^0-9]\)[0-9][0-9]*$/\1'"$revision"'/g' \
+      unix/VERSION >/dev/null 2>/dev/null
+
+    # stage updates
+    git add source/backend/povray.h unix/VERSION >/dev/null 2>/dev/null
   fi
 else
   echo "changes are limited to accompanying files, no need to update POV_RAY_PRERELEASE."
+fi
+
+########################################################################################################################
+#
+# Sanitize changed C/C++ source files:
+# - Update copyright year
+# - Convert leading tabs to spaces (limited)
+# - Trim trailing spaces
+
+year=`date -u +"%Y"`
+copytext='\(Copyright [1-2][90][0-9][0-9]-\)20[0-9][0-9]\( Persistence of Vision Raytracer Pty. Ltd.\)'
+
+unstaged=`git diff --name-only`
+
+for fname in `git diff --cached --name-only | grep -E "^source/|^vfe/|^mac/|^unix/|^windows/" | grep -E ".cpp$|.h$"`
+do
+
+  echo "Sanitizing $fname"
+
+  if echo "$unstaged" | grep "$fname" >/dev/null 2>/dev/null
+  then
+    echo "ERROR: Unstaged changes to $fname detected, can't safely sanitize file."
+    exit 1
+  fi
+
+  # Update...
+  # - copyright year
+  # - leading tabs (replace with spaces)
+  # - trailing spaces (remove)
+
+  year=`date -u +"%Y"`
+  sed -i \
+    -e 's/'"$copytext"'/\1'"$year"'\2/g' \
+    -e 's/^\t\t\t\t\t/                    /g' \
+    -e 's/^\t\t\t\t/                /g' \
+    -e 's/^\t\t\t/            /g' \
+    -e 's/^\t\t/        /g' \
+    -e 's/^\t/    /g' \
+    -e 's/ *$//g' \
+    "$fname" >/dev/null 2>/dev/null
+
+  # stage updates
+  git add "$fname" >/dev/null 2>/dev/null
+
+done
+
+########################################################################################################################
+#
+# Sanity-check changed C/C++ source files:
+# - check for presence of copyright statement
+# - check for proper doxygen @file tag
+# - check for tab characters
+
+errors=""
+for fname in `git diff --cached --name-only | grep -E "^source/|^vfe/|^mac/|^unix/|^windows/" | grep -E ".cpp$|.h$"`
+do
+
+  echo "Sanity-checking $fname"
+
+  # Check for copyright statement
+
+  if ! grep "$copytext" "$fname" >/dev/null
+  then
+    errors=`echo "$errors" ; echo "$fname: missing copyright statement"`
+  fi
+
+  # Check for proper doxygen @file tag
+
+  shortfname=`echo "$fname" | sed 's/^source\///g'`
+  if ! grep '@file  *'"$shortfname"'$' "$fname" >/dev/null
+  then
+    errors=`echo "$errors" ; echo "$fname: missing doxygen '@file $shortfname' tag"`
+  elif grep "@file " "$fname" | sed 's|  *'"$shortfname"' *||g' | grep "@file " >/dev/null
+  then
+    errors=`echo "$errors" ; echo "$fname: wrong doxygen '@file ...' tag"`
+  fi
+
+  # Check for any remaining tab characters
+
+  if grep "$tab" "$fname" >/dev/null
+  then
+    errors=`echo "$errors" ; echo "$fname: tab characters found"`
+  fi
+
+done
+
+if [ x"$errors" != x"" ]
+then
+  echo "$errors"
+  exit 1
 fi
 
 ########################################################################################################################

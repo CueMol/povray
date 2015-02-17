@@ -8,7 +8,7 @@
 /// @parblock
 ///
 /// Persistence of Vision Ray Tracer ('POV-Ray') version 3.7.
-/// Copyright 1991-2014 Persistence of Vision Raytracer Pty. Ltd.
+/// Copyright 1991-2015 Persistence of Vision Raytracer Pty. Ltd.
 ///
 /// POV-Ray is free software: you can redistribute it and/or modify
 /// it under the terms of the GNU Affero General Public License as
@@ -42,13 +42,15 @@
 #include "base/textstream.h"
 #include "base/textstreambuffer.h"
 #include "backend/control/messagefactory.h"
+#include "backend/math/matrices.h"
+#include "backend/math/vector.h"
 #include "backend/parser/reswords.h"
-#include "backend/pattern/warps.h"
 #include "backend/scene/atmosph.h"
 #include "backend/scene/camera.h"
 #include "backend/scene/scene.h"
 #include "backend/shape/blob.h"
 #include "backend/support/task.h"
+#include "backend/texture/pigment.h"
 
 namespace pov
 {
@@ -74,6 +76,9 @@ const int SYM_TABLE_SIZE = 257;
 
 struct FPUContext;
 class ImageData;
+struct GenericSpline;
+struct ClassicTurbulence; // full declaration in backend/pattern/warps.h
+struct BlackHoleWarp; // full declaration in backend/pattern/warps.h
 
 /*****************************************************************************
 * Global preprocessor defines
@@ -192,11 +197,12 @@ struct BetaFlags
 * Global typedefs
 ******************************************************************************/
 
-class Parser : public Task
+typedef DBL EXPRESS[5];   ///< @todo       Make this obsolete.
+
+
+class Parser : public SceneTask
 {
     public:
-        MessageFactory messageFactory;
-
         class DebugTextStreamBuffer : public TextStreamBuffer
         {
             public:
@@ -235,8 +241,10 @@ class Parser : public Task
 
         Token_Struct Token;
 
-        struct POV_MACRO
+        struct Macro
         {
+            Macro(const char *);
+            ~Macro();
             char *Macro_Name;
             UCS2 *Macro_Filename;
             pov_base::ITextStream::FilePos Macro_File_Pos;
@@ -314,7 +322,7 @@ class Parser : public Task
         void Warn_State (TOKEN Token_Id, TOKEN Type);
         void Only_In (const char *s1,const char *s2);
         void Not_With (const char *s1,const char *s2);
-        void Warn_Compat (int f, const char *sym);
+        void Warn_Compat (bool definite, const char *sym);
         void Link_Textures (TEXTURE **Old_Texture, TEXTURE *New_Texture);
 
         ObjectPtr Parse_Object_Mods (ObjectPtr Object);
@@ -331,11 +339,13 @@ class Parser : public Task
         void *Copy_Identifier(void *Data, int Type);
         TRANSFORM *Parse_Transform(TRANSFORM *Trans = NULL);
         TRANSFORM *Parse_Transform_Block(TRANSFORM *New = NULL);
-        char *Get_Reserved_Words (const char *additional_words) ;
+        char *Get_Reserved_Words (const char *additional_words);
 
         void SendFatalError(Exception& e);
 
-        void Warning(unsigned int level, const char *format,...);
+        void Warning(const char *format,...);
+        void Warning(WarningLevel level, const char *format,...);
+        void VersionWarning(unsigned int sinceVersion, const char *format,...);
         void PossibleError(const char *format,...);
         void Error(const char *format,...);
 
@@ -347,7 +357,7 @@ class Parser : public Task
         // tokenize.h/tokenize.cpp
         void Get_Token (void);
         void Unget_Token (void);
-        void Parse_String_Literal(void);
+        void Read_String_Literal(void);
         void Where_Error (POVMSObjectPtr msg);
         void Where_Warning (POVMSObjectPtr msg);
         void Parse_Directive (int After_Hash);
@@ -357,7 +367,6 @@ class Parser : public Task
         void Initialize_Tokenizer (void);
         void Terminate_Tokenizer (void);
         SYM_ENTRY *Add_Symbol (int Index,const char *Name,TOKEN Number);
-        void Destroy_Macro (POV_MACRO *PMac);
         POV_ARRAY *Parse_Array_Declare (void);
         SYM_ENTRY *Create_Entry (int Index,const char *Name,TOKEN Number);
         void Acquire_Entry_Reference (SYM_ENTRY *Entry);
@@ -372,7 +381,7 @@ class Parser : public Task
         void Parse_Tnormal (TNORMAL **);
         void Parse_Finish (FINISH **);
         void Parse_Media (vector<Media>&);
-        void Parse_Interior (Interior **);
+        void Parse_Interior (InteriorPtr&);
         void Parse_Media_Density_Pattern (PIGMENT **);
         void Parse_Media_Density_Pattern (vector<PIGMENT*>&);
         FOG *Parse_Fog (void);
@@ -396,7 +405,7 @@ class Parser : public Task
         template<typename DATA_T> void Parse_BlendListData_Default (const ColourBlendMapData& Def_Entry, int Blend_Type, DATA_T& rData);
         template<typename MAP_T> shared_ptr<MAP_T> Parse_Blend_List (int Count, ColourBlendMapConstPtr Def_Map, int Blend_Type);
         template<typename MAP_T> shared_ptr<MAP_T> Parse_Item_Into_Blend_List (int Blend_Type);
-        SPLINE *Parse_Spline (void);
+        GenericSpline *Parse_Spline (void);
 
         /// Parses a FLOAT.
         DBL Parse_Float (void);
@@ -408,7 +417,7 @@ class Parser : public Task
         void Parse_UV_Vect (Vector2d& UV_Vect);
         void Parse_Vector (Vector3d& Vector);
         void Parse_Vector4D (VECTOR_4D Vector);
-        int Parse_Unknown_Vector (EXPRESS Express, bool allow_identifier = false, bool *had_identifier = NULL);
+        int Parse_Unknown_Vector (EXPRESS& Express, bool allow_identifier = false, bool *had_identifier = NULL);
         void Parse_Scale_Vector (Vector3d& Vector);
         DBL Parse_Float_Param (void);
         void Parse_Float_Param2 (DBL *Val1, DBL *Val2);
@@ -429,8 +438,9 @@ class Parser : public Task
         char *Parse_C_String(bool pathname = false);
         UCS2 *Parse_String(bool pathname = false, bool require = true);
 
-        UCS2 *String_To_UCS2(const char *str, bool pathname = false);
-        char *UCS2_To_String(const UCS2 *str, bool pathname = false);
+        UCS2 *String_Literal_To_UCS2(const char *str, bool pathname = false);
+        UCS2 *String_To_UCS2(const char *str);
+        char *UCS2_To_String(const UCS2 *str);
 
         UCS2 *UCS2_strcat(UCS2 *s1, const UCS2 *s2);
         int UCS2_strlen(const UCS2 *str);
@@ -537,7 +547,7 @@ class Parser : public Task
             const UCS2 *Macro_Return_Name;
             bool Macro_Same_Flag;
             bool Switch_Case_Ok_Flag;
-            POV_MACRO *PMac;
+            Macro *PMac;
             pov_base::ITextStream::FilePos File_Pos;
             char* Loop_Identifier;
             DBL For_Loop_End;
@@ -641,7 +651,7 @@ class Parser : public Task
         void init_sym_tables (void);
         void Add_Sym_Table ();
         void Remove_Symbol (int Index, const char *Name, bool is_array_elem, void **DataPtr, int ttype);
-        POV_MACRO *Parse_Macro(void);
+        Macro *Parse_Macro(void);
         void Invoke_Macro(void);
         void Return_From_Macro(void);
         void Add_Entry (int Index,SYM_ENTRY *Table_Entry);
@@ -668,9 +678,9 @@ class Parser : public Task
         TEXTURE *Parse_Tiles (void);
         TEXTURE *Parse_Material_Map (void);
         void Parse_Texture_Transform (TEXTURE *Texture);
-        TURB *Check_Turb (WARP **Warps_Ptr);
-        void Parse_Warp (WARP **Warp_Ptr);
-        void Check_BH_Parameters (BLACK_HOLE *bh);
+        ClassicTurbulence *Check_Turb (WarpList& warps, bool patternHandlesTurbulence);
+        void Parse_Warp (WarpList& warps);
+        void Check_BH_Parameters (BlackHoleWarp *bh);
 
         // parsestr.h/parsestr.cpp
         UCS2 *Parse_Str(bool pathname);
@@ -692,31 +702,31 @@ class Parser : public Task
         int Parse_Inside();
         bool Parse_Call();
         DBL Parse_Function_Call();
-        void Parse_Vector_Function_Call(EXPRESS Express, int *Terms);
-        void Parse_Spline_Call(EXPRESS Express, int *Terms);
+        void Parse_Vector_Function_Call(EXPRESS& Express, int *Terms);
+        void Parse_Spline_Call(EXPRESS& Express, int *Terms);
 
         /// Parses a NUMERIC_FACTOR or VECTOR_FACTOR.
-        void Parse_Num_Factor (EXPRESS Express,int *Terms);
+        void Parse_Num_Factor (EXPRESS& Express,int *Terms);
 
         /// Parses a NUMERIC_TERM or VECTOR_TERM.
-        void Parse_Num_Term (EXPRESS Express, int *Terms);
+        void Parse_Num_Term (EXPRESS& Express, int *Terms);
 
         /// Parses a FLOAT or VECTOR.
-        void Parse_Rel_Factor (EXPRESS Express,int *Terms);
+        void Parse_Rel_Factor (EXPRESS& Express,int *Terms);
 
         /// Parses a REL_TERM (including FLOAT) or VECTOR.
-        void Parse_Rel_Term (EXPRESS Express, int *Terms);
+        void Parse_Rel_Term (EXPRESS& Express, int *Terms);
 
         /// Parses a REL_TERM comparing two strings.
-        void Parse_Rel_String_Term (const UCS2* lhs, EXPRESS Express, int Terms);
+        void Parse_Rel_String_Term (const UCS2 *lhs, EXPRESS& Express, int Terms);
 
         /// Parses a LOGICAL_EXPRESSION (including FLOAT) or VECTOR.
-        void Parse_Logical (EXPRESS Express, int *Terms);
+        void Parse_Logical (EXPRESS& Express, int *Terms);
 
         /// Parses a FULL_EXPRESSION or VECTOR_FULL_EXPRESSION.
-        void Parse_Express (EXPRESS Express, int *Terms);
+        void Parse_Express (EXPRESS& Express, int *Terms);
 
-        void Promote_Express (EXPRESS Express,int *Old_Terms,int New_Terms);
+        void Promote_Express (EXPRESS& Express,int *Old_Terms,int New_Terms);
         void POV_strupr (char *s);
         void POV_strlwr (char *s);
 

@@ -4,13 +4,13 @@
 ///
 /// This module implements primitives for mesh objects.
 ///
-/// This module was written by Dieter Bayer [DB].
+/// @author Dieter Bayer
 ///
 /// @copyright
 /// @parblock
 ///
 /// Persistence of Vision Ray Tracer ('POV-Ray') version 3.7.
-/// Copyright 1991-2014 Persistence of Vision Raytracer Pty. Ltd.
+/// Copyright 1991-2015 Persistence of Vision Raytracer Pty. Ltd.
 ///
 /// POV-Ray is free software: you can redistribute it and/or modify
 /// it under the terms of the GNU Affero General Public License as
@@ -66,7 +66,7 @@
 
 #include "backend/bounding/bbox.h"
 #include "backend/math/matrices.h"
-#include "backend/math/vector.h"
+#include "backend/render/ray.h"
 #include "backend/scene/objects.h"
 #include "backend/scene/threaddata.h"
 #include "backend/shape/triangle.h"
@@ -931,7 +931,7 @@ bool Mesh::Compute_Mesh_Triangle(MESH_TRIANGLE *Triangle, bool Smooth, Vector3d&
 
     if (Smooth)
     {
-    //	compute_smooth_triangle(Triangle, P1, P2, P3);
+    //  compute_smooth_triangle(Triangle, P1, P2, P3);
         Triangle->Smooth = true;
     }
 
@@ -1448,7 +1448,7 @@ bool Mesh::intersect_bbox_tree(const BasicRay &ray, const BasicRay &Orig_Ray, DB
     Rayinfo rayinfo(ray);
 
     /* Start with an empty priority queue. */
-    Thread->Mesh_Queue.QSize = 0;
+    Thread->Mesh_Queue.Clear();
     found = false;
 
     Best = BOUND_HUGE;
@@ -1467,9 +1467,9 @@ bool Mesh::intersect_bbox_tree(const BasicRay &ray, const BasicRay &Orig_Ray, DB
 
     /* Check elements in the priority queue. */
 
-    while (Thread->Mesh_Queue.QSize != 0)
+    while (!Thread->Mesh_Queue.IsEmpty())
     {
-        Priority_Queue_Delete(Thread->Mesh_Queue, &Depth, &Node);
+        Thread->Mesh_Queue.RemoveMin(Depth, Node);
 
         /*
          * If current intersection is larger than the best intersection found
@@ -2369,7 +2369,7 @@ bool Mesh::inside_bbox_tree(const BasicRay &ray, TraceThreadData *Thread) const
     Rayinfo rayinfo(ray);
 
     /* Start with an empty priority queue. */
-    Thread->Mesh_Queue.QSize = 0;
+    Thread->Mesh_Queue.Clear();
     found = 0;
 
     Best = BOUND_HUGE;
@@ -2385,9 +2385,9 @@ bool Mesh::inside_bbox_tree(const BasicRay &ray, TraceThreadData *Thread) const
     Check_And_Enqueue(Thread->Mesh_Queue, Root, &Root->BBox, &rayinfo, Thread);
 
     /* Check elements in the priority queue. */
-    while (Thread->Mesh_Queue.QSize != 0)
+    while (!Thread->Mesh_Queue.IsEmpty())
     {
-        Priority_Queue_Delete(Thread->Mesh_Queue, &Depth, &Node);
+        Thread->Mesh_Queue.RemoveMin(Depth, Node);
 
         /* Check current node. */
         if (Node->Entries)
